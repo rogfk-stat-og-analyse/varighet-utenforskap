@@ -1,0 +1,381 @@
+require no.ssb.fdb:52 as fdb 
+create-dataset pop
+
+// år 0........................................
+//henter Utenfor arbeid, utdanning og arbeidsmarkedstiltak, 15 år og eldre
+import fdb/ARBSTATUS_PERS_UTENFOR 2019-11-16 as ARBSTATUS2019
+tabulate ARBSTATUS2019, missing
+
+// kopi av variabel
+generate Status2019 = "5 - Ukjent"
+replace Status2019 = "1 - Innenfor" if ARBSTATUS2019 == '0'
+replace Status2019 = "2 - Utenfor" if ARBSTATUS2019 == '1'
+
+tabulate Status2019
+
+//henter Prioritert arbeidsstyrkestatus
+import fdb/ARBSTATUS_PERS_STATUS8 2019-11-16 as ARBSTATUS2019_pri
+tabulate ARBSTATUS2019_pri, missing
+
+tabulate ARBSTATUS2019_pri Status2019 
+
+//Lager en kategorisering basert på prioritert arbeidsstatus
+generate Status4siffer2019 = substr(ARBSTATUS2019_pri,1,4)
+tabulate Status4siffer2019
+
+generate StatusHovedkat2019 = ""
+
+// Arbeid (sterk)
+// Omfatter personer der hovedstatus er arbeid og der de fire siste sifrene er 0000, altså ingen sekundærstatus i denne variabelen.
+// Dette tolkes som den sterkeste formen for tilknytning til arbeid.
+replace StatusHovedkat2019 = "Arbeid (sterk)" if (Status4siffer2019 == "0808" | Status4siffer2019 == "0816" | Status4siffer2019 == "0832" | Status4siffer2019 == "1608") & substr(ARBSTATUS2019_pri,5,4) == "0000"
+
+// Arbeid (kombinert)
+// Omfatter personer der hovedstatus er arbeid, men som samtidig har en sekundærstatus.
+// Dette regnes fortsatt som arbeidstilknytning, men en svakere eller mer sammensatt form enn "Arbeid (sterk)".
+replace StatusHovedkat2019 = "Arbeid (kombinert)" if (Status4siffer2019 == "0808" | Status4siffer2019 == "0816" | Status4siffer2019 == "0832" | Status4siffer2019 == "1608") & substr(ARBSTATUS2019_pri,5,4) != "0000"
+
+// Utdanning
+// Omfatter personer med ordinær utdanning som høyest prioriterte status.
+// Dette regnes som innenfor arbeid, utdanning og opplæring, selv om personen ikke er i arbeid.
+replace StatusHovedkat2019 = "Utdanning" if Status4siffer2019 == "4008"
+
+// Tiltak/kvalifisering
+// Omfatter ordinære tiltak, individstønad/tiltakspenger og introduksjonsprogram.
+// Disse regnes som innenfor fordi personen deltar i kvalifiserende eller arbeidsrettet aktivitet, men tilknytningen er svakere enn arbeid og ordinær utdanning.
+replace StatusHovedkat2019 = "Tiltak/kvalifisering" if Status4siffer2019 == "3208" | Status4siffer2019 == "3216" | Status4siffer2019 == "3240"
+
+// Arbeidsledig
+// Omfatter registrert helt arbeidsledig og dagpengemottakere.
+// Disse regnes som utenfor i denne inndelingen, men som en gruppe med relativ nærhet til arbeid sammenlignet med flere andre utenfor-grupper.
+replace StatusHovedkat2019 = "Arbeidsledig" if Status4siffer2019 == "2408" | Status4siffer2019 == "3224"
+
+// Helse (midlertidig)
+// Omfatter sykepenger, nedsatt arbeidsevne på tiltak, AAP og nedsatt arbeidsevne ikke på tiltak.
+// Dette er en analytisk samlegruppe for helserelatert eller arbeidsevnerelatert utenforskap.
+// Kategorien er grov: særlig 4816 og 6432 kan i praksis være langvarige tilstander, men de holdes her samlet for å få en håndterbar hovedinndeling.
+replace StatusHovedkat2019 = "Helse (midlertidig)" if Status4siffer2019 == "4808" | Status4siffer2019 == "4816" | Status4siffer2019 == "4848" | Status4siffer2019 == "6432"
+
+// Uføre (varig)
+// Omfatter varig uførepensjon/uføretrygd.
+// Dette skilles ut som egen kategori fordi det normalt representerer en mer varig og avklart form for utenforskap enn de øvrige helserelaterte statusene.
+replace StatusHovedkat2019 = "Uføre (varig)" if Status4siffer2019 == "4864"
+
+// Sosiale ytelser
+// Omfatter kontantstøtte, overgangsstønad og sosialhjelp.
+// Dette er en samlegruppe for personer uten arbeid, utdanning eller tiltak som hovedstatus, og med svak eller indirekte tilknytning til arbeidsmarkedet.
+replace StatusHovedkat2019 = "Sosiale ytelser" if Status4siffer2019 == "6408" | Status4siffer2019 == "6416" | Status4siffer2019 == "6424"
+
+// Pensjon
+// Omfatter etterlattepensjon, AFP, supplerende stønad, alderspensjon og andre pensjoner.
+// Kategorien holdes separat fordi dette i mange tilfeller ikke bør forstås som "utenforskap" i vanlig sosialpolitisk forstand, men som livsfase eller pensjonsstatus.
+replace StatusHovedkat2019 = "Pensjon" if Status4siffer2019 == "5608" | Status4siffer2019 == "5616" | Status4siffer2019 == "5624" | Status4siffer2019 == "5632" | Status4siffer2019 == "5640"
+
+// Ukjent
+// Omfatter personer med ukjent status i datagrunnlaget.
+// Holdes som egen kategori for å synliggjøre datamessig usikkerhet og unngå at disse feilaktig plasseres i andre grupper.
+replace StatusHovedkat2019 = "Ukjent" if Status4siffer2019 == "7208"
+
+tabulate StatusHovedkat2019, freq cellpct missing
+
+tabulate ARBSTATUS2019_pri StatusHovedkat2019, freq cellpct missing
+tabulate StatusHovedkat2019 Status2019, freq colpct cellpct missing
+
+//legger på geografi 
+import fdb/ARBSTATUS_PERS_KOMM_NR 2019-11-30 as bosted2019
+generate fylke = substr(bosted2019,1,2)
+generate kommnr = substr(bosted2019,1,4)
+
+keep if fylke == '11'
+
+tabulate bosted2019 Status2019, missing
+
+//legger til info om kjønn
+import fdb/BEFOLKNING_KJOENN as kjønn
+
+//setter aldersintervall i første år. 
+import fdb/ARBSTATUS_PERS_ALDER 2019-11-16 as alder2019
+
+tabulate Status2019
+tabulate StatusHovedkat2019
+tabulate ARBSTATUS2019_pri StatusHovedkat2019, missing
+tabulate ARBSTATUS2019_pri Status2019, missing
+
+tabulate StatusHovedkat2019 Status2019 if alder2019 >=15 & alder2019 <= 61, freq cellpct missing
+tabulate StatusHovedkat2019 Status2019 if alder2019 >=15 & alder2019 <=29, freq cellpct missing
+tabulate StatusHovedkat2019 Status2019 if alder2019 >=30 & alder2019 <=61, freq cellpct missing
+
+//keep if alder2019 >=15
+//keep if alder2019 <=29
+
+tabulate alder2019 Status2019, missing rowpct freq
+tabulate alder2019 Status2019, missing rowpct freq
+
+tabulate  kjønn Status2019, freq colpct rowpct
+
+tabulate bosted2019 Status2019, missing
+
+// år 1.......................................
+//let dato_år1 = $år1 ++ "-11-16"
+//let dato1_år1 = $år2 ++ "-01-01"
+import fdb/ARBSTATUS_PERS_UTENFOR 2020-11-16 as ARBSTATUS2020
+
+tabulate Status2019 ARBSTATUS2020, missing
+
+//sjekker statuskode for ukjent - merk 1 &1/2  månders forskjelle på telledato
+import fdb/BEFOLKNING_STATUSKODE 2021-01-01 as statuskode2020
+tabulate ARBSTATUS2020 statuskode2020, missing
+
+
+generate Status2020 = "5 - Ukjent"
+replace Status2020 = "1 - Innenfor" if ARBSTATUS2020 == '0'
+replace Status2020 = "2 - Utenfor" if ARBSTATUS2020 == '1'
+replace Status2020 = "3 - Utvandret" if statuskode2020 == '3'
+replace Status2020 = "4 - Død" if statuskode2020 == '5'
+
+tabulate Status2020 Status2019 , missing
+
+//henter Prioritert arbeidsstyrkestatus
+import fdb/ARBSTATUS_PERS_STATUS8 2020-11-16 as ARBSTATUS2020_pri
+tabulate ARBSTATUS2020_pri, missing
+
+tabulate ARBSTATUS2020_pri Status2020 
+
+//Lager en kategorisering basert på prioritert arbeidsstatus
+generate Status4siffer2020 = substr(ARBSTATUS2020_pri,1,4)
+tabulate Status4siffer2020
+
+generate StatusHovedkat2020 = ""
+
+// Utvandret
+// Bruker statuskode2021 for å identifisere om personen har utvandret etter 2020
+// Overstyrer alle andre kategorier
+replace StatusHovedkat2020 = "Utvandret" if statuskode2020 == "3"
+
+// Død
+// Bruker statuskode2021 for å identifisere om personen er død etter 2020
+// Overstyrer alle andre kategorier
+replace StatusHovedkat2020 = "Død" if statuskode2020 == "5"
+
+// Arbeid (sterk)
+replace StatusHovedkat2020 = "Arbeid (sterk)" if StatusHovedkat2020 == "" & (Status4siffer2020 == "0808" | Status4siffer2020 == "0816" | Status4siffer2020 == "0832" | Status4siffer2020 == "1608") & substr(ARBSTATUS2020_pri,5,4) == "0000"
+
+// Arbeid (kombinert)
+replace StatusHovedkat2020 = "Arbeid (kombinert)" if StatusHovedkat2020 == "" & (Status4siffer2020 == "0808" | Status4siffer2020 == "0816" | Status4siffer2020 == "0832" | Status4siffer2020 == "1608") & substr(ARBSTATUS2020_pri,5,4) != "0000"
+
+// Utdanning
+replace StatusHovedkat2020 = "Utdanning" if StatusHovedkat2020 == "" & Status4siffer2020 == "4008"
+
+// Tiltak/kvalifisering
+replace StatusHovedkat2020 = "Tiltak/kvalifisering" if StatusHovedkat2020 == "" & (Status4siffer2020 == "3208" | Status4siffer2020 == "3216" | Status4siffer2020 == "3240")
+
+// Arbeidsledig
+replace StatusHovedkat2020 = "Arbeidsledig" if StatusHovedkat2020 == "" & (Status4siffer2020 == "2408" | Status4siffer2020 == "3224")
+
+// Helse (midlertidig)
+// Samlekategori for helserelatert utenforskap. Inkluderer også nedsatt arbeidsevne, som kan være langvarig.
+replace StatusHovedkat2020 = "Helse (midlertidig)" if StatusHovedkat2020 == "" & (Status4siffer2020 == "4808" | Status4siffer2020 == "4816" | Status4siffer2020 == "4848" | Status4siffer2020 == "6432")
+
+// Uføre (varig)
+replace StatusHovedkat2020 = "Uføre (varig)" if StatusHovedkat2020 == "" & Status4siffer2020 == "4864"
+
+// Sosiale ytelser
+replace StatusHovedkat2020 = "Sosiale ytelser" if StatusHovedkat2020 == "" & (Status4siffer2020 == "6408" | Status4siffer2020 == "6416" | Status4siffer2020 == "6424")
+
+// Pensjon
+replace StatusHovedkat2020 = "Pensjon" if StatusHovedkat2020 == "" & (Status4siffer2020 == "5608" | Status4siffer2020 == "5616" | Status4siffer2020 == "5624" | Status4siffer2020 == "5632" | Status4siffer2020 == "5640")
+
+// Ukjent
+replace StatusHovedkat2020 = "Ukjent" if StatusHovedkat2020 == "" & Status4siffer2020 == "7208"
+
+tabulate StatusHovedkat2020
+
+tabulate ARBSTATUS2020_pri StatusHovedkat2020, missing
+tabulate StatusHovedkat2020
+
+tabulate Status2020 StatusHovedkat2020, freq cellpct missing
+tabulate Status2020 StatusHovedkat2020 if alder2019 >=15 & alder2019 <=29, freq cellpct missing
+tabulate Status2020 StatusHovedkat2020 if alder2019 >=30 & alder2019 <=61, freq cellpct missing
+
+tabulate StatusHovedkat2019 StatusHovedkat2020, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2020
+
+tabulate StatusHovedkat2020 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+tabulate StatusHovedkat2020 if Status2019=="2 - Utenfor" & alder2019 >=30 & alder2019 <=61, freq cellpct missing
+
+
+tabulate StatusHovedkat2019 StatusHovedkat2020 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2020 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29
+
+tabulate StatusHovedkat2019 StatusHovedkat2020 if Status2019=="2 - Utenfor" & alder2019 >=30 & alder2019 <=61, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2020 if Status2019=="2 - Utenfor" & alder2019 >=30 & alder2019 <=61
+
+tabulate StatusHovedkat2019 StatusHovedkat2020 if Status2020=="1 - Innenfor" & Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2020 if Status2020=="1 - Innenfor" & Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29
+
+tabulate StatusHovedkat2019 StatusHovedkat2020, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2020
+
+// år 2............................................
+
+import fdb/ARBSTATUS_PERS_UTENFOR 2021-11-16 as ARBSTATUS2021
+
+tabulate Status2020 ARBSTATUS2021, missing
+
+//sjekker statuskode for ukjent - merk 1 &1/2  månders forskjelle på telledato
+import fdb/BEFOLKNING_STATUSKODE 2022-01-01 as statuskode2021
+tabulate ARBSTATUS2021 statuskode2021, missing
+
+
+generate Status2021 = "5 - Ukjent"
+replace Status2021 = "1 - Innenfor" if ARBSTATUS2021 == '0'
+replace Status2021 = "2 - Utenfor" if ARBSTATUS2021 == '1'
+replace Status2021 = "3 - Utvandret" if statuskode2021 == '3'
+replace Status2021 = "4 - Død" if statuskode2021 == '5'
+
+tabulate Status2021 Status2020 , missing
+
+tabulate Status2019 Status2021, missing
+sankey Status2019 Status2020 Status2021
+
+
+
+// år 3............................................
+
+import fdb/ARBSTATUS_PERS_UTENFOR 2022-11-16 as ARBSTATUS2022
+
+tabulate Status2021 ARBSTATUS2022, missing
+
+//sjekker statuskode for ukjent - merk 1 &1/2  månders forskjelle på telledato
+import fdb/BEFOLKNING_STATUSKODE 2023-01-01 as statuskode2022
+tabulate ARBSTATUS2022 statuskode2022, missing
+
+
+generate Status2022 = "5 - Ukjent"
+replace Status2022 = "1 - Innenfor" if ARBSTATUS2022 == '0'
+replace Status2022 = "2 - Utenfor" if ARBSTATUS2022 == '1'
+replace Status2022 = "3 - Utvandret" if statuskode2022 == '3'
+replace Status2022 = "4 - Død" if statuskode2022 == '5'
+
+tabulate Status2019 Status2022, missing
+
+sankey Status2019 Status2020 Status2021 Status2022
+
+// år 4............................................
+import fdb/ARBSTATUS_PERS_UTENFOR 2023-11-16 as ARBSTATUS2023
+
+tabulate Status2022 ARBSTATUS2023, missing
+
+//sjekker statuskode for ukjent - merk 1 &1/2  månders forskjelle på telledato
+import fdb/BEFOLKNING_STATUSKODE 2024-01-01 as statuskode2023
+tabulate ARBSTATUS2023 statuskode2023, missing
+
+
+generate Status2023 = "5 - Ukjent"
+replace Status2023 = "1 - Innenfor" if ARBSTATUS2023 == '0'
+replace Status2023 = "2 - Utenfor" if ARBSTATUS2023 == '1'
+replace Status2023 = "3 - Utvandret" if statuskode2023 == '3'
+replace Status2023 = "4 - Død" if statuskode2023 == '5'
+
+tabulate Status2019 Status2023, missing
+
+sankey Status2019 Status2020 Status2021 Status2022 Status2023
+
+
+// år 5............................................
+// år 5............................................
+
+import fdb/ARBSTATUS_PERS_UTENFOR 2024-11-16 as ARBSTATUS2024
+
+tabulate Status2023 ARBSTATUS2024, missing
+
+//sjekker statuskode for ukjent - merk 1 &1/2  månders forskjelle på telledato
+import fdb/BEFOLKNING_STATUSKODE 2025-01-01 as statuskode2024
+tabulate ARBSTATUS2024 statuskode2024, missing
+
+
+generate Status2024 = "5 - Ukjent"
+replace Status2024 = "1 - Innenfor" if ARBSTATUS2024 == '0'
+replace Status2024 = "2 - Utenfor" if ARBSTATUS2024 == '1'
+replace Status2024 = "3 - Utvandret" if statuskode2024 == '3'
+replace Status2024 = "4 - Død" if statuskode2024 == '5'
+
+tabulate Status2019 Status2024, missing freq cellpct
+
+sankey Status2019 Status2020 Status2021 Status2022 Status2023 Status2024
+
+sankey Status2019 Status2020 Status2021 Status2022 Status2023 Status2024 if Status2019 == "1 - Innenfor"
+
+sankey Status2019 Status2020 Status2021 Status2022 Status2023 Status2024 if Status2019 == '2 - Utenfor' 
+
+tabulate alder2019 Status2024 , missing rowpct freq
+tabulate alder2019 Status2024 
+
+//henter Prioritert arbeidsstyrkestatus
+import fdb/ARBSTATUS_PERS_STATUS8 2024-11-16 as ARBSTATUS2024_pri
+tabulate ARBSTATUS2024_pri, missing
+
+tabulate ARBSTATUS2024_pri Status2024 
+
+//Lager en kategorisering basert på prioritert arbeidsstatus
+generate Status4siffer2024 = substr(ARBSTATUS2024_pri,1,4)
+tabulate Status4siffer2024
+
+generate StatusHovedkat2024 = ""
+
+// Utvandret
+// Bruker statuskode2024 for å identifisere om personen har utvandret i 2024
+// Overstyrer alle andre kategorier
+replace StatusHovedkat2024 = "Utvandret" if statuskode2024 == "3"
+
+// Død
+// Bruker statuskode2024 for å identifisere om personen er død i 2024
+// Overstyrer alle andre kategorier
+replace StatusHovedkat2024 = "Død" if statuskode2024 == "5"
+
+// Arbeid (sterk)
+replace StatusHovedkat2024 = "Arbeid (sterk)" if StatusHovedkat2024 == "" & (Status4siffer2024 == "0808" | Status4siffer2024 == "0816" | Status4siffer2024 == "0832" | Status4siffer2024 == "1608") & substr(ARBSTATUS2024_pri,5,4) == "0000"
+
+// Arbeid (kombinert)
+replace StatusHovedkat2024 = "Arbeid (kombinert)" if StatusHovedkat2024 == "" & (Status4siffer2024 == "0808" | Status4siffer2024 == "0816" | Status4siffer2024 == "0832" | Status4siffer2024 == "1608") & substr(ARBSTATUS2024_pri,5,4) != "0000"
+
+// Utdanning
+replace StatusHovedkat2024 = "Utdanning" if StatusHovedkat2024 == "" & Status4siffer2024 == "4008"
+
+// Tiltak/kvalifisering
+replace StatusHovedkat2024 = "Tiltak/kvalifisering" if StatusHovedkat2024 == "" & (Status4siffer2024 == "3208" | Status4siffer2024 == "3216" | Status4siffer2024 == "3240")
+
+// Arbeidsledig
+replace StatusHovedkat2024 = "Arbeidsledig" if StatusHovedkat2024 == "" & (Status4siffer2024 == "2408" | Status4siffer2024 == "3224")
+
+// Helse (midlertidig)
+// Samlekategori for helserelatert utenforskap. Inkluderer også nedsatt arbeidsevne, som kan være langvarig.
+replace StatusHovedkat2024 = "Helse (midlertidig)" if StatusHovedkat2024 == "" & (Status4siffer2024 == "4808" | Status4siffer2024 == "4816" | Status4siffer2024 == "4848" | Status4siffer2024 == "6432")
+
+// Uføre (varig)
+replace StatusHovedkat2024 = "Uføre (varig)" if StatusHovedkat2024 == "" & Status4siffer2024 == "4864"
+
+// Sosiale ytelser
+replace StatusHovedkat2024 = "Sosiale ytelser" if StatusHovedkat2024 == "" & (Status4siffer2024 == "6408" | Status4siffer2024 == "6416" | Status4siffer2024 == "6424")
+
+// Pensjon
+replace StatusHovedkat2024 = "Pensjon" if StatusHovedkat2024 == "" & (Status4siffer2024 == "5608" | Status4siffer2024 == "5616" | Status4siffer2024 == "5624" | Status4siffer2024 == "5632" | Status4siffer2024 == "5640")
+
+// Ukjent
+replace StatusHovedkat2024 = "Ukjent" if StatusHovedkat2024 == "" & Status4siffer2024 == "7208"
+
+tabulate StatusHovedkat2024
+
+tabulate ARBSTATUS2024_pri StatusHovedkat2024, missing
+tabulate StatusHovedkat2024
+
+tabulate Status2024 StatusHovedkat2024 if alder2019 >=15 & alder2019 <=61, freq cellpct missing
+tabulate Status2024 StatusHovedkat2024 if alder2019 >=15 & alder2019 <=29, freq cellpct missing
+tabulate Status2024 StatusHovedkat2024 if alder2019 >=30 & alder2019 <=61, freq cellpct missing
+
+tabulate StatusHovedkat2019 StatusHovedkat2024, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2024
+
+tabulate StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=61, freq cellpct missing
+tabulate StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+tabulate StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=30 & alder2019 <=61, freq cellpct missing
