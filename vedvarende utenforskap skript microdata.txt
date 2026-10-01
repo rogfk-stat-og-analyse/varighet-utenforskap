@@ -1,4 +1,4 @@
-require no.ssb.fdb:52 as fdb 
+require no.ssb.fdb:54 as fdb 
 create-dataset pop
 
 // år 0........................................
@@ -375,6 +375,73 @@ tabulate Status2024 StatusHovedkat2024 if alder2019 >=30 & alder2019 <=61, freq 
 
 tabulate StatusHovedkat2019 StatusHovedkat2024, freq cellpct missing
 sankey StatusHovedkat2019 StatusHovedkat2024
+
+tabulate StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=61, freq cellpct missing
+tabulate StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+tabulate StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=30 & alder2019 <=61, freq cellpct missing
+
+tabulate StatusHovedkat2019 StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29
+
+tabulate StatusHovedkat2019 StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=30 & alder2019 <=61, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=30 & alder2019 <=61
+
+tabulate StatusHovedkat2019 StatusHovedkat2024 if Status2024=="1 - Innenfor" & Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+sankey StatusHovedkat2019 StatusHovedkat2024 if Status2024=="1 - Innenfor" & Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29
+
+
+
+// Har personen gyldig status alle år?
+generate gyldig_periode = 1
+
+replace gyldig_periode = 0 if Status2019 != "1 - Innenfor" & Status2019 != "2 - Utenfor"
+replace gyldig_periode = 0 if Status2020 != "1 - Innenfor" & Status2020 != "2 - Utenfor"
+replace gyldig_periode = 0 if Status2021 != "1 - Innenfor" & Status2021 != "2 - Utenfor"
+replace gyldig_periode = 0 if Status2022 != "1 - Innenfor" & Status2022 != "2 - Utenfor"
+replace gyldig_periode = 0 if Status2023 != "1 - Innenfor" & Status2023 != "2 - Utenfor"
+replace gyldig_periode = 0 if Status2024 != "1 - Innenfor" & Status2024 != "2 - Utenfor"
+
+tabulate gyldig_periode
+
+
+// Antall år innenfor og utenfor
+generate ant_innenfor = 0
+generate ant_utenfor = 0
+
+replace ant_innenfor = ant_innenfor + 1 if Status2019 == "1 - Innenfor"
+replace ant_innenfor = ant_innenfor + 1 if Status2020 == "1 - Innenfor"
+replace ant_innenfor = ant_innenfor + 1 if Status2021 == "1 - Innenfor"
+replace ant_innenfor = ant_innenfor + 1 if Status2022 == "1 - Innenfor"
+replace ant_innenfor = ant_innenfor + 1 if Status2023 == "1 - Innenfor"
+replace ant_innenfor = ant_innenfor + 1 if Status2024 == "1 - Innenfor"
+
+replace ant_utenfor = ant_utenfor + 1 if Status2019 == "2 - Utenfor"
+replace ant_utenfor = ant_utenfor + 1 if Status2020 == "2 - Utenfor"
+replace ant_utenfor = ant_utenfor + 1 if Status2021 == "2 - Utenfor"
+replace ant_utenfor = ant_utenfor + 1 if Status2022 == "2 - Utenfor"
+replace ant_utenfor = ant_utenfor + 1 if Status2023 == "2 - Utenfor"
+replace ant_utenfor = ant_utenfor + 1 if Status2024 == "2 - Utenfor"
+
+tabulate ant_innenfor if gyldig_periode == 1, freq cellpct
+tabulate ant_utenfor if gyldig_periode == 1, freq cellpct
+
+// Forløp berre for dei med gyldig status alle år
+generate forlop = "4 - Ikke observerbar hele perioden"
+replace forlop = "1 - Vedvarende innenfor" if gyldig_periode == 1 & ant_innenfor == 6
+replace forlop = "2 - Vedvarende utenfor" if gyldig_periode == 1 & ant_utenfor == 6
+replace forlop = "3 - Vekslende" if gyldig_periode == 1 & ant_innenfor > 0 & ant_utenfor > 0
+
+tabulate forlop, missing freq cellpct
+
+tabulate ant_utenfor if gyldig_periode == 1 & alder2019 >=15 & alder2019 <=61, freq cellpct missing
+tabulate ant_utenfor if gyldig_periode == 1 & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+tabulate ant_utenfor if gyldig_periode == 1 & alder2019 >=30 & alder2019 <=61, freq cellpct missing
+
+
+tabulate ant_utenfor if gyldig_periode == 1 & Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=61, freq cellpct missing
+tabulate ant_utenfor if gyldig_periode == 1 & Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
+tabulate ant_utenfor if gyldig_periode == 1 & Status2019=="2 - Utenfor" & alder2019 >=30 & alder2019 <=61, freq cellpct missing
+
 
 tabulate StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=61, freq cellpct missing
 tabulate StatusHovedkat2024 if Status2019=="2 - Utenfor" & alder2019 >=15 & alder2019 <=29, freq cellpct missing
